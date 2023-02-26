@@ -25,7 +25,7 @@
 /*
 * Changes from Qualcomm Innovation Center are provided under the following license:
 *
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -57,6 +57,11 @@
 * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
+
+/*
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include <stdio.h>
 #include <malloc.h>
@@ -1980,7 +1985,12 @@ DisplayError DisplayBase::SetActiveConfig(uint32_t index) {
   validated_ = false;
   hw_intf_->GetActiveConfig(&active_index);
 
+  // Cache the last refresh rate set by SF
+  HWDisplayAttributes display_attributes = {};
+  hw_intf_->GetDisplayAttributes(index, &display_attributes);
+
   if (active_index == index) {
+    active_refresh_rate_ = display_attributes.fps;
     return kErrorNone;
   }
 
@@ -1990,10 +2000,6 @@ DisplayError DisplayBase::SetActiveConfig(uint32_t index) {
   }
 
   avoid_qync_mode_change_ = true;
-
-  // Cache last refresh rate set by SF
-  HWDisplayAttributes display_attributes = {};
-  hw_intf_->GetDisplayAttributes(index, &display_attributes);
   active_refresh_rate_ = display_attributes.fps;
 
   return ReconfigureDisplay();
@@ -3968,6 +3974,16 @@ void DisplayBase::ProcessPowerEvent() {
   std::unique_lock<std::mutex> lck(power_mutex_);
   transition_done_ = true;
   cv_.notify_one();
+}
+
+void DisplayBase::Abort() {
+  std::unique_lock<std::mutex> lck(power_mutex_);
+
+  if (display_type_ == kHDMI && first_cycle_) {
+    DLOGI("Abort!");
+    transition_done_ = true;
+    cv_.notify_one();
+  }
 }
 
 void DisplayBase::CacheRetireFence() {
